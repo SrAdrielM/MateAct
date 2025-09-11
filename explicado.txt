@@ -6,59 +6,97 @@ import matplotlib.pyplot as plt
 from sympy import symbols, sympify, diff, simplify, Function, Add, Mul, Pow, Symbol, lambdify
 from reactpy import component, html, run, use_state
 
+# Definimos la variable simbólica 'x' que usaremos en nuestras funciones
 x = symbols("x")
 
+# ===== Preprocesar expresión =====
 def preprocesar(expr: str) -> str:
+    """
+    Convierte la expresión ingresada por el usuario a un formato entendible por SymPy.
+    - Cambia '^' por '**'
+    - Inserta '*' donde hace falta (ej: 2x → 2*x)
+    """
     expr = expr.replace("^", "**")
     expr = re.sub(r"(\d)([a-zA-Z])", r"\1*\2", expr)
     expr = re.sub(r"(\))(\d)", r"\1*\2", expr)
     expr = re.sub(r"([a-zA-Z])(\d)", r"\1*\2", expr)
     return expr
 
+# ===== Función para derivar con pasos =====
 def derivar_con_pasos(expr):
+    """
+    Calcula la derivada de la expresión y devuelve los pasos aplicados según las reglas de derivación.
+    """
     pasos = []
+
+    # Regla de la suma
     if isinstance(expr, Add):
         pasos.append(f"Regla de la suma: d/dx({expr}) = suma de derivadas de cada término")
         derivada = sum(derivar_con_pasos(arg)[0] for arg in expr.args)
         return derivada, pasos
+
+    # Regla del cociente
     num, den = expr.as_numer_denom()
     if den != 1:
         pasos.append(f"Regla del cociente: d/dx({expr}) = (u'v - uv')/v^2")
         derivada = diff(expr, x)
         return derivada, pasos
+
+    # Regla del producto
     if isinstance(expr, Mul):
         pasos.append(f"Regla del producto: d/dx({expr}) = u'v + uv'")
         derivada = diff(expr, x)
         return derivada, pasos
+
+    # Regla de la potencia
     if isinstance(expr, Pow):
         base, exp = expr.args
         pasos.append(f"Regla de la potencia: d/dx({base}**{exp}) = {exp}*({base}**({exp}-1))*({diff(base, x)})")
         derivada = diff(expr, x)
         return derivada, pasos
+
+    # Regla de la cadena para funciones
     if isinstance(expr, Function):
         pasos.append(f"Regla de la cadena: d/dx({expr}) = f'(g(x))*g'(x)")
         derivada = diff(expr, x)
         return derivada, pasos
+
+    # Variable simbólica
     if isinstance(expr, Symbol):
         pasos.append(f"d/dx({expr}) = 1")
         return diff(expr, x), pasos
+
+    # Número constante
     if expr.is_number:
         pasos.append(f"d/dx({expr}) = 0")
         return 0, pasos
+
+    # Caso general
     pasos.append(f"Derivada directa de {expr}")
     derivada = diff(expr, x)
     return derivada, pasos
 
+# ===== Generar gráfica =====
 def generar_grafica(expr, derivada_simplificada):
+    """
+    Genera una gráfica de la función original y su derivada simplificada.
+    Devuelve la imagen codificada en base64 para mostrar en HTML.
+    """
+    # Convertimos expresiones simbólicas a funciones numéricas
     funcion_lamb = lambdify(x, expr, "numpy")
     derivada_lamb = lambdify(x, derivada_simplificada, "numpy")
+
+    # Creamos un rango de valores X para graficar
     X = np.linspace(-10, 10, 400)
     try:
         Y = funcion_lamb(X)
         Y_der = derivada_lamb(X)
     except:
+        # En caso de error (ej: división por cero) devolvemos ceros
         Y = np.zeros_like(X)
         Y_der = np.zeros_like(X)
+    
+    # Configuración de la gráfica
     plt.figure(figsize=(6,4))
     plt.plot(X, Y, label="f(x)", color="#2980b9", linewidth=3)
     plt.plot(X, Y_der, label="f'(x)", color="#e67e22", linewidth=3, linestyle='--')
@@ -67,6 +105,8 @@ def generar_grafica(expr, derivada_simplificada):
     plt.grid(True, alpha=0.3)
     plt.legend()
     plt.tight_layout()
+    
+    # Guardamos la gráfica en memoria y la convertimos a base64
     buf = io.BytesIO()
     plt.savefig(buf, format="png", transparent=True)
     buf.seek(0)
@@ -74,21 +114,28 @@ def generar_grafica(expr, derivada_simplificada):
     plt.close()
     return image_base64
 
+# ===== Componente principal de la app =====
 @component
 def Derivador():
-    funcion, set_funcion = use_state("")
-    resultado, set_resultado = use_state("")
-    grafica, set_grafica = use_state("")
-    hover, set_hover = use_state(False)
+    # Estados de ReactPy
+    funcion, set_funcion = use_state("")        # Input del usuario
+    resultado, set_resultado = use_state("")    # Resultado derivada y pasos
+    grafica, set_grafica = use_state("")        # Imagen de la gráfica
+    hover, set_hover = use_state(False)         # Estado para efecto hover en el botón
 
+    # ===== Función para actualizar el input =====
     def handle_change(event):
         set_funcion(event["target"]["value"])
 
+    # ===== Función para derivar y generar resultados =====
     def handle_submit(event):
         try:
+            # Convertimos el texto a expresión SymPy
             expr = sympify(preprocesar(funcion))
             derivada, pasos = derivar_con_pasos(expr)
             derivada_simplificada = simplify(derivada)
+
+            # Creamos HTML con los pasos
             texto_pasos = "".join(f"<li>{p}</li>" for p in pasos)
             texto_final = (
                 f"<b>Función:</b> {expr}<br>"
@@ -96,12 +143,16 @@ def Derivador():
                 f"<b>Resultado final:</b> <span style='color:#e67e22;font-weight:bold'>{derivada_simplificada}</span>"
             )
             set_resultado(texto_final)
+
+            # Generamos la gráfica
             img = generar_grafica(expr, derivada_simplificada)
             set_grafica(img)
         except Exception as e:
+            # En caso de error, mostramos mensaje rojo
             set_resultado(f"<span style='color:#e74c3c'>Error: {e}</span>")
             set_grafica("")
 
+    # ===== HTML con reglas de uso =====
     reglas_html = """
     <h3 style="color:#d35400;">Cómo usar la calculadora</h3>
     <ul>
@@ -119,6 +170,7 @@ def Derivador():
     </ul>
     """
 
+    # ===== Renderizado de la interfaz =====
     return html.div(
         {
             "style": {
@@ -129,6 +181,7 @@ def Derivador():
                 "gap": "30px",
             }
         },
+        # ===== Panel principal: calculadora y resultados =====
         html.div(
             {
                 "style": {
@@ -140,6 +193,8 @@ def Derivador():
                 }
             },
             html.h1({"style": {"color": "#2980b9", "textAlign": "center"}}, "Calculadora de Derivadas"),
+            
+            # Input de función
             html.input(
                 {
                     "type": "text",
@@ -148,67 +203,4 @@ def Derivador():
                     "onChange": handle_change,
                     "style": {
                         "width": "100%",
-                        "padding": "12px",
-                        "marginBottom": "20px",
-                        "borderRadius": "10px",
-                        "border": "2px solid #2980b9",
-                        "fontSize": "16px",
-                    },
-                }
-            ),
-            html.button(
-                {
-                    "onClick": handle_submit,
-                    "onMouseOver": lambda e: set_hover(True),
-                    "onMouseOut": lambda e: set_hover(False),
-                    "style": {
-                        "padding": "12px 25px",
-                        "borderRadius": "10px",
-                        "border": "none",
-                        "background": "#d35400" if hover else "#e67e22",
-                        "color": "white",
-                        "cursor": "pointer",
-                        "fontSize": "16px",
-                        "width": "100%",
-                        "marginBottom": "20px",
-                        "transition": "0.3s",
-                    },
-                },
-                "Derivar",
-            ),
-            html.div(
-                {
-                    "style": {
-                        "background": "#f0f4f8",
-                        "padding": "15px",
-                        "borderRadius": "10px",
-                        "minHeight": "100px",
-                        "whiteSpace": "pre-wrap",
-                        "marginBottom": "20px",
-                        "overflowX": "auto",
-                    },
-                    "dangerouslySetInnerHTML": {"__html": resultado},
-                }
-            ),
-            html.div(
-                html.img({"src": f"data:image/png;base64,{grafica}", "style":{"width":"100%","borderRadius":"10px"}}) if grafica else ""
-            ),
-        ),
-        html.div(
-            {
-                "style": {
-                    "flex": "0.8",
-                    "padding": "25px",
-                    "background": "#fff3e0",
-                    "borderRadius": "20px",
-                    "boxShadow": "0 15px 30px rgba(0,0,0,0.1)",
-                    "overflowY": "auto",
-                    "height": "fit-content",
-                }
-            },
-            html.div({"dangerouslySetInnerHTML": {"__html": reglas_html}})
-        ),
-    )
-
-if __name__ == "__main__":
-    run(Derivador)
+                        "padding":
