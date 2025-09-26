@@ -51,14 +51,23 @@ def derivar_con_pasos(expr):
 
 def generar_grafica(expr, derivada_simplificada):
     funcion_lamb = lambdify(x, expr, "numpy")
-    derivada_lamb = lambdify(x, derivada_simplificada, "numpy")
     X = np.linspace(-10, 10, 400)
+
     try:
         Y = funcion_lamb(X)
-        Y_der = derivada_lamb(X)
     except:
         Y = np.zeros_like(X)
-        Y_der = np.zeros_like(X)
+
+    # ✅ Caso especial: derivada constante
+    if derivada_simplificada.is_number:
+        Y_der = np.full_like(X, float(derivada_simplificada))
+    else:
+        derivada_lamb = lambdify(x, derivada_simplificada, "numpy")
+        try:
+            Y_der = derivada_lamb(X)
+        except:
+            Y_der = np.zeros_like(X)
+
     plt.figure(figsize=(6,4))
     plt.plot(X, Y, label="f(x)", color="#2980b9", linewidth=3)
     plt.plot(X, Y_der, label="f'(x)", color="#e67e22", linewidth=3, linestyle='--')
@@ -92,7 +101,7 @@ def Derivador():
             texto_pasos = "".join(f"<li>{p}</li>" for p in pasos)
             texto_final = (
                 f"<b>Función:</b> {expr}<br>"
-                f"<b>Procedimiento:</b><ol>{texto_pasos}</ol>"
+                f"<b>Regla y formula a utilizar:</b><ol>{texto_pasos}</ol>"
                 f"<b>Resultado final:</b> <span style='color:#e67e22;font-weight:bold'>{derivada_simplificada}</span>"
             )
             set_resultado(texto_final)
@@ -117,6 +126,7 @@ def Derivador():
         <li>Cadena: f'(x) = n*u^(n-1) * u'</li>
         <li>Cociente: f'(x) = (u'v - uv') / v^2</li>
     </ul>
+    <h4 style="color:#d35400;">Esta es una calculadora basica para poder derivar de una manera mas facil, sencilla y solventar una problematica de manera mas rapida</h4>
     """
 
     return html.div(
